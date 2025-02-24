@@ -7,27 +7,45 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.webdriver.common.action_chains import ActionChains  # For mouse movements
 from twocaptcha import TwoCaptcha  # For CAPTCHA solving
 import undetected_chromedriver as uc  # Used to avoid bot detection
 
-# Define mobile emulation settings (optional, uncomment if needed)
-mobile_emulation = {
-    "deviceMetrics": {"width": 375, "height": 812, "pixelRatio": 3.0},
-    "userAgent": "Mozilla/5.0 (Linux; Android 7.3.0; en-us; Nexus 5 Build/JOP40D) AppleWebKit/535.19 (KHTML, like Gecko) Chrome/18.0.1025.166 Mobile Safari/535.19"
-}
-
+# Define Chrome options with anti-detection measures
 def get_chrome_options():
-    """Generate a fresh ChromeOptions object."""
+    """Generate ChromeOptions with anti-detection settings."""
     options = uc.ChromeOptions()
-    options.add_argument("--disable-blink-features=AutomationControlled")  # Hides automation flag
+    options.add_argument("--disable-blink-features=AutomationControlled")  # Hides automation flags
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    # options.add_experimental_option("mobileEmulation", mobile_emulation)  # Uncomment for mobile emulation
+    # Set a custom user agent to mimic a real browser
+    options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
     return options
 
+# Simulate human-like interactions
+def simulate_user_interaction(browser):
+    """Simulate mouse movements and scrolling to mimic human behavior."""
+    actions = ActionChains(browser)
+    # Move mouse to a random position
+    actions.move_by_offset(random.randint(10, 100), random.randint(10, 100)).perform()
+    # Generate random scroll amount in Python
+    scroll_amount = random.randint(100, 200)
+    # Execute the JavaScript with the Python-generated value
+    browser.execute_script(f"window.scrollBy(0, {scroll_amount});")
+    # Add a random pause
+    time.sleep(random.uniform(0.5, 1.5))
+
+# Type text like a human
+def human_like_send_keys(element, text):
+    """Type text into an element character by character with small delays."""
+    for char in text:
+        element.send_keys(char)
+        time.sleep(random.uniform(0.1, 0.3))
+
+# Retrieve temporary email
 def get_mail(browser):
-    """Retrieve temporary email using the browser instance."""
-    for _ in range(50):  # Retry logic for reliability
+    """Retrieve a temporary email address."""
+    for _ in range(50):
         browser.get("https://tempmail.email/")
         try:
             WebDriverWait(browser, 10).until(
@@ -41,165 +59,105 @@ def get_mail(browser):
         time.sleep(random.uniform(1, 3))  # Random delay before retry
     return None
 
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from twocaptcha import TwoCaptcha
-import time
-import random
-
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from twocaptcha import TwoCaptcha
-import time
-import random
-
+# Solve CAPTCHA with anti-detection
 def solve_captcha(browser, api_key):
-    """Solve reCAPTCHA using 2Captcha with enhanced timing and debugging."""
+    """Solve reCAPTCHA with 2Captcha, incorporating human-like behavior."""
     solver = TwoCaptcha(api_key)
     max_attempts = 5
+    wait_time = 120  # Increased from 60 to 120 seconds
 
     for attempt in range(max_attempts):
         try:
-            print(f"Attempt {attempt + 1}/{max_attempts}: Waiting for page to stabilize...")
-            WebDriverWait(browser, 10).until(
-                EC.invisibility_of_element_located((By.ID, "splash-screen"))
-            )
-            print("Splash screen gone, waiting for CAPTCHA to load...")
-            time.sleep(30)  # Wait 30 seconds for page to settle
+            print(f"Attempt {attempt + 1}: Waiting for CAPTCHA to load...")
+            time.sleep(random.uniform(2, 5))  # Random delay for page stabilization
 
-            # Log current HTML for debugging
-            body_html = browser.find_element(By.TAG_NAME, "body").get_attribute('outerHTML')
-            print(f"Attempt {attempt + 1} - Current body HTML before CAPTCHA check: {body_html[:15000]}")
+            # Simulate user interaction before locating CAPTCHA
+            simulate_user_interaction(browser)
 
-            # Wait for CAPTCHA div
-            print(f"Attempt {attempt + 1}: Checking for visible CAPTCHA div...")
-            g_recaptcha = WebDriverWait(browser, 180).until(
+            # Wait for CAPTCHA div with increased timeout
+            g_recaptcha = WebDriverWait(browser, wait_time).until(
                 EC.visibility_of_element_located((By.XPATH, "//div[contains(@class, 'g-recaptcha')]"))
             )
             site_key = g_recaptcha.get_attribute("data-sitekey")
             print(f"Found sitekey: {site_key}")
 
-            # Switch to reCAPTCHA iframe
-            iframe = WebDriverWait(browser, 180).until(
-                EC.presence_of_element_located((By.XPATH, "//iframe[contains(@src, 'recaptcha')]"))
-            )
-            browser.switch_to.frame(iframe)
-            WebDriverWait(browser, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//span[contains(@class, 'recaptcha-checkbox')]"))
-            )
-            browser.switch_to.default_content()
-
-            # Solve CAPTCHA with 2Captcha
+            # Solve CAPTCHA using 2Captcha
             captcha_result = solver.recaptcha(sitekey=site_key, url=browser.current_url)
             code = captcha_result['code']
             print(f"Received CAPTCHA response: {code[:20]}...")
 
-            # Inject the response token
+            # Inject CAPTCHA response into the page
             browser.execute_script(f'document.getElementById("g-recaptcha-response").innerHTML="{code}";')
 
-            # Click "Next"
+            # Simulate interaction after solving CAPTCHA
+            simulate_user_interaction(browser)
+
+            # Click "Next" button
             next_button = WebDriverWait(browser, 10).until(
                 EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='Next']"))
             )
             time.sleep(random.uniform(1, 3))
             next_button.click()
-
             print("CAPTCHA solved successfully!")
             return True
 
         except Exception as e:
             print(f"Attempt {attempt + 1} failed: {e}")
-            # Check for confirmation code field
-            try:
-                WebDriverWait(browser, 10).until(
-                    EC.presence_of_element_located((By.NAME, "confirmation_code"))
-                )
-                print("Found confirmation code field instead of CAPTCHA, proceeding...")
-                return True
-            except:
-                print("No confirmation code field found either.")
             if attempt + 1 < max_attempts:
                 print("Retrying after delay...")
-                time.sleep(30)
+                time.sleep(random.uniform(5, 10))
             else:
-                print("All attempts failed.")
+                print("All CAPTCHA attempts failed.")
                 return False
 
-# Example usage
-# browser = your_selenium_browser_instance
-# api_key = "your_2captcha_api_key"
-# solve_captcha(browser, api_key)
-
-        except TimeoutException as e:
-            print(f"Attempt {attempt + 1} failed with TimeoutException: {e}")
-            # Check for alternative states
-            try:
-                code_field = WebDriverWait(browser, 10).until(
-                    EC.presence_of_element_located((By.NAME, "confirmation_code"))
-                )
-                print("Found confirmation code field instead of CAPTCHA, proceeding...")
-                return True  # Skip CAPTCHA if code field is already present
-            except (TimeoutException, NoSuchElementException):
-                print("No confirmation code field found either.")
-            attempt += 1
-            if attempt < max_attempts:
-                print("Retrying after delay...")
-                time.sleep(20)  # Increase retry delay to 20 seconds
-            else:
-                print("All attempts failed. Final body HTML:", browser.find_element(By.TAG_NAME, "body").get_attribute('outerHTML')[:15000])
-                return False
-        except Exception as e:
-            print(f"Attempt {attempt + 1} failed: {e}")
-            attempt += 1
-            if attempt < max_attempts:
-                print("Retrying after delay...")
-                time.sleep(20)
-            else:
-                print("All attempts failed. Final body HTML:", browser.find_element(By.TAG_NAME, "body").get_attribute('outerHTML')[:15000])
-                return False
-
+# Instagram signup process
 def instagram_worker(browser, mail):
-    """Automate Instagram signup with the temporary email and handle CAPTCHA after year selection."""
+    """Automate Instagram signup with anti-detection measures."""
     try:
         browser.get('https://www.instagram.com/accounts/emailsignup/')
-        time.sleep(random.uniform(2, 5))  # Random delay to mimic human loading
+        time.sleep(random.uniform(2, 5))  # Random delay for page load
 
         # Handle cookies popup
         try:
-            WebDriverWait(browser, 10).until(
+            cookie_button = WebDriverWait(browser, 10).until(
                 EC.element_to_be_clickable((By.XPATH, "//button[text()='Allow all cookies']"))
-            ).click()
+            )
             time.sleep(random.uniform(1, 3))
+            cookie_button.click()
             print("Allowed cookies.")
         except TimeoutException:
-            print("Cookies acceptance button not found, continuing...")
+            print("Cookies popup not found, continuing...")
 
-        # Fill form with random delays
+        # Simulate interaction before form filling
+        simulate_user_interaction(browser)
+
+        # Fill form fields with human-like typing
         email_field = WebDriverWait(browser, 10).until(
             EC.presence_of_element_located((By.NAME, "emailOrPhone"))
         )
-        time.sleep(random.uniform(0.5, 1.5))
-        email_field.send_keys(mail)
+        human_like_send_keys(email_field, mail)
+        time.sleep(random.uniform(1, 2))
 
         password_field = WebDriverWait(browser, 10).until(
             EC.presence_of_element_located((By.NAME, "password"))
         )
-        time.sleep(random.uniform(0.5, 1.5))
-        password_field.send_keys("toffee")
+        human_like_send_keys(password_field, "toffee")
+        time.sleep(random.uniform(1, 2))
 
         full_name_field = WebDriverWait(browser, 10).until(
             EC.presence_of_element_located((By.NAME, "fullName"))
         )
-        time.sleep(random.uniform(0.5, 1.5))
-        full_name_field.send_keys(generate_random_full_name())
+        human_like_send_keys(full_name_field, generate_random_full_name())
+        time.sleep(random.uniform(1, 2))
 
         username_field = WebDriverWait(browser, 10).until(
             EC.presence_of_element_located((By.NAME, "username"))
         )
-        time.sleep(random.uniform(0.5, 1.5))
-        username_field.send_keys(generate_random_username())
+        human_like_send_keys(username_field, generate_random_username())
+        time.sleep(random.uniform(1, 2))
+
+        # Simulate interaction before clicking sign-up
+        simulate_user_interaction(browser)
 
         # Click sign-up button
         sign_up_button = WebDriverWait(browser, 10).until(
@@ -215,50 +173,52 @@ def instagram_worker(browser, mail):
         )
         select = Select(dropdown)
         select.select_by_value("1990")
-        time.sleep(random.uniform(1, 2))
+        time.sleep(random.uniform(1, 3))
         print(f"Selected year: {select.first_selected_option.text}")
 
-        # Click Next button to trigger CAPTCHA
+        # Simulate interaction before clicking Next
+        # simulate_user_interaction(browser)
+
+        # Click Next to trigger CAPTCHA
         next_button = WebDriverWait(browser, 10).until(
             EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='Next']"))
         )
         time.sleep(random.uniform(1, 3))
         next_button.click()
-        print("Clicked the 'Next' button after year selection!")
+        print("Clicked 'Next' after year selection!")
 
-        # Check for CAPTCHA after clicking Next
-        api_key = "72fe002f79fbce126f36b6100dd6e847"  # Your 2Captcha API key
-        try:
-            if solve_captcha(browser, api_key):
-                print("Proceeding after CAPTCHA resolution or code field detected...")
-            else:
-                print("Failed to solve CAPTCHA or detect code field, aborting...")
-                return None
-        except TimeoutException:
-            print("No CAPTCHA or code field detected, proceeding...")
-            return browser  # Proceed if no CAPTCHA or code field, might be an error state
+        # Solve CAPTCHA
+        api_key = "72fe002f79fbce126f36b6100dd6e847"  # Replace with your 2Captcha API key
+        if solve_captcha(browser, api_key):
+            print("Proceeding after CAPTCHA resolution...")
+        else:
+            print("Failed to solve CAPTCHA.")
+            return None
 
         return browser
     except (TimeoutException, NoSuchElementException) as e:
-        print(f"Error during Instagram worker: {e}")
+        print(f"Error during Instagram signup: {e}")
         return None
 
+# Generate random full name
 def generate_random_full_name():
     """Generate a random full name."""
-    first_names = ['Aurelius', 'Zephyr', 'Odessa', 'Calliope', 'Evangeline', 'Lysander', 'Magnolia', 'Orion', 'Peregrine', 'Seraphina']
-    last_names = ['Moonstone', 'Foxworth', 'Wilde', 'Everest', 'Holloway', 'Darkmoor', 'Brightmore', 'Winterfell', 'Ravenwood', 'Stormchaser']
+    first_names = ['Aurelius', 'Zephyr', 'Odessa', 'Calliope', 'Evangeline']
+    last_names = ['Moonstone', 'Foxworth', 'Wilde', 'Everest', 'Holloway']
     return f"{random.choice(first_names)} {random.choice(last_names)}"
 
+# Generate random username
 def generate_random_username():
     """Generate a random username."""
-    adjectives = ['witty', 'quirky', 'zesty', 'snarky', 'jumpy', 'gleeful', 'peculiar', 'loopy', 'spunky', 'breezy']
-    nouns = ['platypus', 'marmot', 'gecko', 'narwhal', 'quokka', 'sloth', 'pangolin', 'axolotl', 'capybara', 'robin']
+    adjectives = ['witty', 'quirky', 'zesty', 'snarky', 'jumpy']
+    nouns = ['platypus', 'marmot', 'gecko', 'narwhal', 'quokka']
     random_suffix = ''.join(random.choices(string.digits + string.ascii_lowercase, k=4))
     return f"{random.choice(adjectives)}_{random.choice(nouns)}_{random_suffix}"
 
+# Check for confirmation code
 def confirm_code_mail(browser):
-    """Wait for the confirmation code to arrive in the inbox."""
-    max_attempts = 10  # Retry up to 10 times
+    """Retrieve confirmation code from email."""
+    max_attempts = 10
     attempt = 0
     while attempt < max_attempts:
         try:
@@ -267,32 +227,27 @@ def confirm_code_mail(browser):
             WebDriverWait(browser, 20).until(
                 EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Instagram')]"))
             )
-            print("Found an email from Instagram!")
             codes = browser.find_elements(By.XPATH, "//div[contains(@class, 'message-body')]")
-            if not codes:
-                codes = browser.find_elements(By.XPATH, "//*[text()]")
-                print("Falling back to broader text search...")
             for code in codes:
                 text = code.text.strip()
                 if text and re.search(r"\d{6}", text):
-                    print(f"Raw email content: {text}")
                     return re.sub(r"\D", "", text)[:6]
-            print("No code found in this attempt.")
         except (TimeoutException, NoSuchElementException) as e:
             print(f"Waiting for confirmation code: {e}")
         attempt += 1
         time.sleep(random.uniform(5, 10))
-    print("Failed to retrieve confirmation code after maximum attempts.")
+    print("Failed to retrieve confirmation code.")
     return None
 
+# Complete signup with confirmation code
 def signup(browser, confirm_code):
-    """Complete the signup process with the confirmation code."""
+    """Enter confirmation code and complete signup."""
     try:
         code_field = WebDriverWait(browser, 10).until(
             EC.presence_of_element_located((By.NAME, "confirmation_code"))
         )
-        time.sleep(random.uniform(0.5, 1.5))
-        code_field.send_keys(confirm_code)
+        human_like_send_keys(code_field, confirm_code)
+        time.sleep(random.uniform(1, 3))
         next_button = WebDriverWait(browser, 10).until(
             EC.element_to_be_clickable((By.XPATH, "//button[text()='Next']"))
         )
@@ -301,17 +256,20 @@ def signup(browser, confirm_code):
         print("Signup completed successfully.")
         return browser
     except (TimeoutException, NoSuchElementException) as e:
-        print(f"Error during signup process: {e}")
+        print(f"Error during signup: {e}")
         return None
 
+# Main execution
 def main():
-    """Main function to orchestrate the signup process."""
+    """Orchestrate the signup process with anti-detection."""
     browser_1 = uc.Chrome(options=get_chrome_options())
     browser_2 = uc.Chrome(options=get_chrome_options())
     try:
         mail = get_mail(browser_1)
         if mail:
             print(f"Retrieved email: {mail}")
+            # Hide webdriver property
+            browser_2.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
             browser_2 = instagram_worker(browser_2, mail)
             if browser_2:
                 confirm_code = confirm_code_mail(browser_1)
@@ -319,10 +277,8 @@ def main():
                     browser_2 = signup(browser_2, confirm_code)
     finally:
         if browser_1:
-            browser_1.delete_all_cookies()
             browser_1.quit()
         if browser_2:
-            browser_2.delete_all_cookies()
             browser_2.quit()
 
 if __name__ == "__main__":
