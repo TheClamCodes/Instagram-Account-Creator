@@ -7,6 +7,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from twocaptcha import TwoCaptcha  # For CAPTCHA solving
 import undetected_chromedriver as uc  # Used to avoid bot detection
 
 # Define mobile emulation settings (optional, uncomment if needed)
@@ -40,8 +41,103 @@ def get_mail(browser):
         time.sleep(random.uniform(1, 3))  # Random delay before retry
     return None
 
+def solve_captcha(browser, api_key):
+    """Solve reCAPTCHA using 2Captcha with robust timing and debugging."""
+    solver = TwoCaptcha(api_key)
+    max_attempts = 5
+    attempt = 0
+
+    while attempt < max_attempts:
+        try:
+            print(f"Attempt {attempt + 1}/{max_attempts}: Waiting for page to stabilize...")
+            WebDriverWait(browser, 10).until(
+                EC.invisibility_of_element_located((By.ID, "splash-screen"))
+            )
+            print("Splash screen gone, waiting for CAPTCHA to load...")
+            time.sleep(20)  # Increase initial delay to 20 seconds
+
+            # Debug DOM state
+            body_html = browser.find_element(By.TAG_NAME, "body").get_attribute('outerHTML')
+            print(f"Attempt {attempt + 1} - Current body HTML before CAPTCHA check:", body_html[:15000])
+
+            # Check for visible CAPTCHA div
+            print(f"Attempt {attempt + 1}: Checking for visible CAPTCHA div...")
+            g_recaptcha = WebDriverWait(browser, 120).until(
+                EC.visibility_of_element_located((By.XPATH, "//div[contains(@class, 'g-recaptcha')]"))
+            )
+            site_key = g_recaptcha.get_attribute("data-sitekey")
+            print("g-recaptcha HTML:", g_recaptcha.get_attribute('outerHTML'))
+            print(f"Found sitekey: {site_key}")
+
+            # Find and switch to the reCAPTCHA iframe
+            iframe = WebDriverWait(browser, 120).until(
+                EC.presence_of_element_located((By.XPATH, "//iframe[contains(@src, 'recaptcha')]"))
+            )
+            print("Switching to reCAPTCHA iframe:", iframe.get_attribute('outerHTML'))
+            browser.switch_to.frame(iframe)
+
+            # Confirm checkbox inside iframe
+            captcha_element = WebDriverWait(browser, 10).until(
+                EC.presence_of_element_located((By.XPATH, "//span[contains(@class, 'recaptcha-checkbox')]"))
+            )
+            print("CAPTCHA checkbox detected inside iframe:")
+            print("Checkbox HTML:", captcha_element.get_attribute('outerHTML'))
+
+            # Switch back to main content
+            browser.switch_to.default_content()
+
+            if not site_key:
+                raise ValueError("No data-sitekey found in CAPTCHA element")
+            print(f"Solving CAPTCHA with sitekey: {site_key}")
+
+            # Solve the CAPTCHA
+            captcha_result = solver.recaptcha(sitekey=site_key, url=browser.current_url)
+            code = captcha_result['code']
+            print(f"Received CAPTCHA response: {code[:20]}...")
+
+            # Inject the solved CAPTCHA response
+            browser.execute_script(f'document.getElementById("g-recaptcha-response").innerHTML="{code}";')
+
+            # Click "Next" again
+            next_button = WebDriverWait(browser, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='Next']"))
+            )
+            time.sleep(random.uniform(1, 3))
+            next_button.click()
+
+            print("CAPTCHA solved successfully!")
+            return True
+
+        except TimeoutException as e:
+            print(f"Attempt {attempt + 1} failed with TimeoutException: {e}")
+            # Check for alternative states
+            try:
+                code_field = WebDriverWait(browser, 10).until(
+                    EC.presence_of_element_located((By.NAME, "confirmation_code"))
+                )
+                print("Found confirmation code field instead of CAPTCHA, proceeding...")
+                return True  # Skip CAPTCHA if code field is already present
+            except (TimeoutException, NoSuchElementException):
+                print("No confirmation code field found either.")
+            attempt += 1
+            if attempt < max_attempts:
+                print("Retrying after delay...")
+                time.sleep(20)  # Increase retry delay to 20 seconds
+            else:
+                print("All attempts failed. Final body HTML:", browser.find_element(By.TAG_NAME, "body").get_attribute('outerHTML')[:15000])
+                return False
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed: {e}")
+            attempt += 1
+            if attempt < max_attempts:
+                print("Retrying after delay...")
+                time.sleep(20)
+            else:
+                print("All attempts failed. Final body HTML:", browser.find_element(By.TAG_NAME, "body").get_attribute('outerHTML')[:15000])
+                return False
+
 def instagram_worker(browser, mail):
-    """Automate Instagram signup with the temporary email."""
+    """Automate Instagram signup with the temporary email and handle CAPTCHA after year selection."""
     try:
         browser.get('https://www.instagram.com/accounts/emailsignup/')
         time.sleep(random.uniform(2, 5))  # Random delay to mimic human loading
@@ -49,7 +145,7 @@ def instagram_worker(browser, mail):
         # Handle cookies popup
         try:
             WebDriverWait(browser, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//button[text()='Allow essential cookies']"))
+                EC.element_to_be_clickable((By.XPATH, "//button[text()='Allow all cookies']"))
             ).click()
             time.sleep(random.uniform(1, 3))
             print("Allowed cookies.")
@@ -98,17 +194,25 @@ def instagram_worker(browser, mail):
         time.sleep(random.uniform(1, 2))
         print(f"Selected year: {select.first_selected_option.text}")
 
+        # Click Next button to trigger CAPTCHA
         next_button = WebDriverWait(browser, 10).until(
             EC.element_to_be_clickable((By.XPATH, "//button[normalize-space()='Next']"))
         )
         time.sleep(random.uniform(1, 3))
         next_button.click()
+        print("Clicked the 'Next' button after year selection!")
 
-        # Optional CAPTCHA handling (uncomment and configure if needed)
-        # api_key = "YOUR_2CAPTCHA_API_KEY"  # Replace with your 2Captcha API key
-        # if solve_captcha(browser, api_key):
-        #     print("CAPTCHA solved, proceeding...")
-        #     time.sleep(random.uniform(2, 5))
+        # Check for CAPTCHA after clicking Next
+        api_key = "72fe002f79fbce126f36b6100dd6e847"  # Your 2Captcha API key
+        try:
+            if solve_captcha(browser, api_key):
+                print("Proceeding after CAPTCHA resolution or code field detected...")
+            else:
+                print("Failed to solve CAPTCHA or detect code field, aborting...")
+                return None
+        except TimeoutException:
+            print("No CAPTCHA or code field detected, proceeding...")
+            return browser  # Proceed if no CAPTCHA or code field, might be an error state
 
         return browser
     except (TimeoutException, NoSuchElementException) as e:
@@ -130,20 +234,32 @@ def generate_random_username():
 
 def confirm_code_mail(browser):
     """Wait for the confirmation code to arrive in the inbox."""
-    while True:
+    max_attempts = 10  # Retry up to 10 times
+    attempt = 0
+    while attempt < max_attempts:
         try:
             browser.get("https://tempmail.email/")
-            WebDriverWait(browser, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'message-body')]"))
+            print(f"Attempt {attempt + 1}: Checking for email...")
+            WebDriverWait(browser, 20).until(
+                EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Instagram')]"))
             )
+            print("Found an email from Instagram!")
             codes = browser.find_elements(By.XPATH, "//div[contains(@class, 'message-body')]")
-            if codes:
-                for code in codes:
-                    if code.text.strip():
-                        return re.sub(r"\D", "", code.text.strip())
+            if not codes:
+                codes = browser.find_elements(By.XPATH, "//*[text()]")
+                print("Falling back to broader text search...")
+            for code in codes:
+                text = code.text.strip()
+                if text and re.search(r"\d{6}", text):
+                    print(f"Raw email content: {text}")
+                    return re.sub(r"\D", "", text)[:6]
+            print("No code found in this attempt.")
         except (TimeoutException, NoSuchElementException) as e:
             print(f"Waiting for confirmation code: {e}")
-        time.sleep(random.uniform(2, 5))  # Random delay before refreshing
+        attempt += 1
+        time.sleep(random.uniform(5, 10))
+    print("Failed to retrieve confirmation code after maximum attempts.")
+    return None
 
 def signup(browser, confirm_code):
     """Complete the signup process with the confirmation code."""
@@ -153,42 +269,21 @@ def signup(browser, confirm_code):
         )
         time.sleep(random.uniform(0.5, 1.5))
         code_field.send_keys(confirm_code)
-
         next_button = WebDriverWait(browser, 10).until(
             EC.element_to_be_clickable((By.XPATH, "//button[text()='Next']"))
         )
         time.sleep(random.uniform(1, 3))
         next_button.click()
-
         print("Signup completed successfully.")
         return browser
     except (TimeoutException, NoSuchElementException) as e:
         print(f"Error during signup process: {e}")
         return None
 
-# Optional CAPTCHA solver (requires 2captcha-python package and API key)
-# from twocaptcha import TwoCaptcha
-# def solve_captcha(browser, api_key):
-#     solver = TwoCaptcha(api_key)
-#     try:
-#         WebDriverWait(browser, 10).until(
-#             EC.presence_of_element_located((By.XPATH, "//div[@class='g-recaptcha']"))
-#         )
-#         site_key = browser.find_element(By.XPATH, "//div[@class='g-recaptcha']").get_attribute("data-sitekey")
-#         captcha_result = solver.recaptcha(sitekey=site_key, url=browser.current_url)
-#         code = captcha_result['code']
-#         browser.execute_script(f'document.getElementById("g-recaptcha-response").innerHTML="{code}";')
-#         print("CAPTCHA solved successfully!")
-#         return True
-#     except Exception as e:
-#         print(f"CAPTCHA solving failed: {e}")
-#         return False
-
 def main():
     """Main function to orchestrate the signup process."""
     browser_1 = uc.Chrome(options=get_chrome_options())
     browser_2 = uc.Chrome(options=get_chrome_options())
-
     try:
         mail = get_mail(browser_1)
         if mail:
@@ -212,4 +307,4 @@ if __name__ == "__main__":
             main()
         except Exception as e:
             print(f"Error: {e}")
-            time.sleep(5)  # Delay before retrying
+            time.sleep(5)
