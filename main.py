@@ -83,33 +83,32 @@ def instagram_worker(page, mail):
         return None
 
 
-# Check for confirmation code using the existing page instance
+# Check for confirmation code using the existing page instance without refreshing
 def confirm_code_mail(page):
     max_attempts = 10
     for attempt in range(max_attempts):
         try:
             logger.info(f"Attempt {attempt + 1}: Checking for email...")
-            # Use existing page, no initial reload
-            email_list = page.wait_for_selector(".message-list__item", timeout=20000)
-            email_list.click()
-            time.sleep(random.uniform(1, 2))  # Wait for email content to load
-            codes = page.query_selector_all(".message-body")
-            for code in codes:
-                text = code.inner_text().strip()
-                match = re.search(r"\d{6}", text)
-                if match:
-                    logger.info(f"Found confirmation code: {match.group(0)}")
-                    return match.group(0)
-            logger.warning("No Instagram email found in this attempt. Refreshing page...")
-            page.reload(wait_until="domcontentloaded")
+            # Find all email entries
+            emails = page.query_selector_all(".receivedMail-content-cover")
+            for email in emails:
+                sender = email.query_selector(".receivedMail-content__sender")
+                if sender and "Instagram" in sender.inner_text():
+                    subject = email.query_selector(".receivedMail-content__subject")
+                    if subject:
+                        text = subject.inner_text().strip()
+                        match = re.search(r"\d{6}", text)
+                        if match:
+                            logger.info(f"Found confirmation code: {match.group(0)}")
+                            return match.group(0)
+            logger.warning("No Instagram email found in this attempt. Waiting before retry...")
         except Exception as e:
             logger.error(f"Waiting for confirmation code: {e}")
             page_content = page.content()
             with open("email_debug.html", "w", encoding="utf-8") as f:
                 f.write(page_content)
             logger.info("Email page content saved to 'email_debug.html'.")
-            page.reload(wait_until="domcontentloaded")
-        time.sleep(random.uniform(5, 10))
+        time.sleep(random.uniform(5, 10))  # Wait between attempts without refreshing
     logger.error("Failed to retrieve confirmation code after all attempts.")
     return None
 
