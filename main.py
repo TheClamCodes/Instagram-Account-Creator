@@ -28,9 +28,11 @@ def human_like_type(page, selector, text):
         time.sleep(random.uniform(0.05, 0.2))
 
 
-# Retrieve temporary email and return the page instance
+# Retrieve temporary email and return the page instance with a pause
 def get_mail(page):
     page.goto("https://tempmail.email/", wait_until="domcontentloaded")
+    logger.info("Waiting 8 seconds for email to stabilize...")
+    time.sleep(8)  # Pause for 3 seconds to let the email settle
     for _ in range(50):
         try:
             email = page.wait_for_selector(".email-block__genEmail", timeout=10000).inner_text()
@@ -133,7 +135,7 @@ def signup(page, confirm_code):
     try:
         human_like_type(page, "[name='email_confirmation_code']", confirm_code)
         time.sleep(random.uniform(1, 3))
-        page.click("button:has-text('Next')", timeout=10000)
+        page.click("div[role='button']:has-text('Next')", timeout=10000)
         logger.info("Signup completed successfully.")
         return page
     except Exception as e:
